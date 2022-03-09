@@ -5,10 +5,29 @@ import requests
 
 def create_rescore_ltr_query(user_query, query_obj, click_prior_query, ltr_model_name, ltr_store_name,
                              active_features=None, rescore_size=500, main_query_weight=1, rescore_query_weight=2):
-    # Create the base query, use a much bigger window
-    #add on the rescore
-    print("IMPLEMENT ME: create_rescore_ltr_query")
-    return query_obj
+    sltr = {
+        "params": {
+            "keywords": user_query,
+            "click_prior_query": click_prior_query
+        },
+        "model": ltr_model_name,
+        "store": ltr_store_name
+    }
+    if active_features:
+        sltr["active_features"] = active_features
+
+    return query_obj | {
+        "rescore": {
+            "window_size": rescore_size,
+            "query": {
+                "rescore_query": {
+                    "sltr": sltr
+                },
+                "query_weight": main_query_weight,
+                "rescore_query_weight": rescore_query_weight
+            }
+        }
+    }
 
 # take an existing query and add in an SLTR so we can use it for explains to see how much SLTR contributes
 def create_sltr_simple_query(user_query, query_obj, click_prior_query, ltr_model_name, ltr_store_name, active_features=None):
@@ -50,8 +69,36 @@ def create_sltr_hand_tuned_query(user_query, query_obj, click_prior_query, ltr_m
     return query_obj, len(query_obj["query"]["function_score"]["query"]["bool"]["should"])
 
 def create_feature_log_query(query, doc_ids, click_prior_query, featureset_name, ltr_store_name, size=200, terms_field="_id"):
-    print("IMPLEMENT ME: create_feature_log_query")
-    return None
+    sltr_name = "logged_featureset"
+    return {
+        "query": {
+            "bool": {
+                "filter": [
+                    {"terms": {terms_field: doc_ids}},
+                    {
+                        "sltr": {
+                            "_name": sltr_name,
+                            "featureset": featureset_name,
+                            "store": ltr_store_name,
+                            "params": {
+                                "keywords": query,
+                                "click_prior_query": click_prior_query
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        "ext": {
+            "ltr_log": {
+                "log_specs": {
+                    "name": "log_entry",
+                    "named_query": sltr_name
+                }
+            }
+        },
+        "size": size
+    }
 
 
 # Item is a Pandas namedtuple
